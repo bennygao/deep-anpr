@@ -29,12 +29,10 @@ of `detect` to filter using non-maximum suppression.
 
 """
 
-
 __all__ = (
     'detect',
     'post_process',
 )
-
 
 import collections
 import itertools
@@ -100,11 +98,11 @@ def detect(im, param_vals):
     # to the stride size, and pixel coordinates.
     for i, (scaled_im, y_val) in enumerate(zip(scaled_ims, y_vals)):
         for window_coords in numpy.argwhere(y_val[0, :, :, 0] >
-                                                       -math.log(1./0.99 - 1)):
+                                                    -math.log(1. / 0.99 - 1)):
             letter_probs = (y_val[0,
-                                  window_coords[0],
-                                  window_coords[1], 1:].reshape(
-                                    7, len(common.CHARS)))
+                            window_coords[0],
+                            window_coords[1], 1:].reshape(
+                7, len(common.CHARS)))
             letter_probs = common.softmax(letter_probs)
 
             img_scale = float(im.shape[0]) / scaled_im.shape[0]
@@ -113,7 +111,7 @@ def detect(im, param_vals):
             bbox_size = numpy.array(model.WINDOW_SHAPE) * img_scale
 
             present_prob = common.sigmoid(
-                               y_val[0, window_coords[0], window_coords[1], 0])
+                y_val[0, window_coords[0], window_coords[1], 0])
 
             yield bbox_tl, bbox_tl + bbox_size, present_prob, letter_probs
 
@@ -137,7 +135,7 @@ def _group_overlapping_rectangles(matches):
                 match_to_group[idx1] = match_to_group[idx2]
                 break
         else:
-            match_to_group[idx1] = num_groups 
+            match_to_group[idx1] = num_groups
             num_groups += 1
 
     groups = collections.defaultdict(list)
@@ -183,7 +181,7 @@ if __name__ == "__main__":
     param_vals = [f[n] for n in sorted(f.files, key=lambda s: int(s[4:]))]
 
     for pt1, pt2, present_prob, letter_probs in post_process(
-                                                  detect(im_gray, param_vals)):
+            detect(im_gray, param_vals)):
         pt1 = tuple(reversed(map(int, pt1)))
         pt2 = tuple(reversed(map(int, pt2)))
 
@@ -195,7 +193,7 @@ if __name__ == "__main__":
         cv2.putText(im,
                     code,
                     pt1,
-                    cv2.FONT_HERSHEY_PLAIN, 
+                    cv2.FONT_HERSHEY_PLAIN,
                     1.5,
                     (0, 0, 0),
                     thickness=5)
@@ -203,10 +201,9 @@ if __name__ == "__main__":
         cv2.putText(im,
                     code,
                     pt1,
-                    cv2.FONT_HERSHEY_PLAIN, 
+                    cv2.FONT_HERSHEY_PLAIN,
                     1.5,
                     (255, 255, 255),
                     thickness=2)
 
     cv2.imwrite(sys.argv[3], im)
-

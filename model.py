@@ -24,46 +24,43 @@ Definition of the neural networks.
 
 """
 
-
 __all__ = (
     'get_training_model',
     'get_detect_model',
     'WINDOW_SHAPE',
 )
 
-
 import tensorflow as tf
 
 import common
-
 
 WINDOW_SHAPE = (64, 128)
 
 
 # Utility functions
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)
-  return tf.Variable(initial)
+    initial = tf.truncated_normal(shape, stddev=0.1)
+    return tf.Variable(initial)
 
 
 def bias_variable(shape):
-  initial = tf.constant(0.1, shape=shape)
-  return tf.Variable(initial)
+    initial = tf.constant(0.1, shape=shape)
+    return tf.Variable(initial)
 
 
 def conv2d(x, W, stride=(1, 1), padding='SAME'):
-  return tf.nn.conv2d(x, W, strides=[1, stride[0], stride[1], 1],
-                      padding=padding)
+    return tf.nn.conv2d(x, W, strides=[1, stride[0], stride[1], 1],
+                        padding=padding)
 
 
 def max_pool(x, ksize=(2, 2), stride=(2, 2)):
-  return tf.nn.max_pool(x, ksize=[1, ksize[0], ksize[1], 1],
-                        strides=[1, stride[0], stride[1], 1], padding='SAME')
+    return tf.nn.max_pool(x, ksize=[1, ksize[0], ksize[1], 1],
+                          strides=[1, stride[0], stride[1], 1], padding='SAME')
 
 
 def avg_pool(x, ksize=(2, 2), stride=(2, 2)):
-  return tf.nn.avg_pool(x, ksize=[1, ksize[0], ksize[1], 1],
-                        strides=[1, stride[0], stride[1], 1], padding='SAME')
+    return tf.nn.avg_pool(x, ksize=[1, ksize[0], ksize[1], 1],
+                          strides=[1, stride[0], stride[1], 1], padding='SAME')
 
 
 def convolutional_layers():
@@ -110,7 +107,7 @@ def get_training_model():
 
     """
     x, conv_layer, conv_vars = convolutional_layers()
-    
+
     # Densely connected layer
     W_fc1 = weight_variable([32 * 8 * 128, 2048])
     b_fc1 = bias_variable([2048])
@@ -137,13 +134,13 @@ def get_detect_model():
 
     """
     x, conv_layer, conv_vars = convolutional_layers()
-    
+
     # Fourth layer
     W_fc1 = weight_variable([8 * 32 * 128, 2048])
-    W_conv1 = tf.reshape(W_fc1, [8,  32, 128, 2048])
+    W_conv1 = tf.reshape(W_fc1, [8, 32, 128, 2048])
     b_fc1 = bias_variable([2048])
     h_conv1 = tf.nn.relu(conv2d(conv_layer, W_conv1,
-                                stride=(1, 1), padding="VALID") + b_fc1) 
+                                stride=(1, 1), padding="VALID") + b_fc1)
     # Fifth layer
     W_fc2 = weight_variable([2048, 1 + 7 * len(common.CHARS)])
     W_conv2 = tf.reshape(W_fc2, [1, 1, 2048, 1 + 7 * len(common.CHARS)])
@@ -151,4 +148,3 @@ def get_detect_model():
     h_conv2 = conv2d(h_conv1, W_conv2) + b_fc2
 
     return (x, h_conv2, conv_vars + [W_fc1, b_fc1, W_fc2, b_fc2])
-

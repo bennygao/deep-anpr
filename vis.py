@@ -43,4 +43,3 @@ for i in range(min(8, conv2.shape[3])):
         ax[j, i].imshow(conv2[:, :, j, i], cmap='Greys')
 
 fig.savefig(sys.argv[2], dpi=30.)
-
