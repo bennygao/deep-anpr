@@ -21,15 +21,10 @@
 #     USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-
 """
 Extract background images from a tar archive.
 
 """
-
-__all__ = (
-    'extract_backgrounds',
-)
 
 import os
 import sys
@@ -37,6 +32,10 @@ import tarfile
 
 import cv2
 import numpy
+
+__all__ = (
+    'extract_backgrounds',
+)
 
 
 def im_from_file(f):

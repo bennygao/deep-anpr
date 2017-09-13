@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 #!/usr/bin/env python
 #
 # Copyright (c) 2016 Matthew Earl
@@ -124,11 +125,17 @@ def read_batches(batch_size):
 def get_loss(y, y_):
     # Calculate the loss from digits being incorrect.  Don't count loss from
     # digits that are in non-present plates.
-    digits_loss = tf.nn.softmax_cross_entropy_with_logits(
-        tf.reshape(y[:, 1:],
-                   [-1, len(common.CHARS)]),
-        tf.reshape(y_[:, 1:],
-                   [-1, len(common.CHARS)]))
+    # y和y_都是长度为(1 + 7 * len(common.CHARS))=(1 + 7 * (10 + 26))=253的向量，
+    # 1表示车牌完整出现在128x64的图像中的概率。
+    # 其中10个数字，26个大写英文字符。
+    # logits和labels都把y和y_向量中第0个元素（表示车牌完整出现在输入图像中概率）去掉，剩下252个元素，
+    # 然后再reshape为7x36的矩阵。每一行表示车牌上的一个位置，每一列的值是该位置是这个字符的概率。
+    # 用reshape过的张量进行softmax和交叉熵计算。
+    logits = tf.reshape(y[:, 1:], [-1, len(common.CHARS)])
+    labels = tf.reshape(y_[:, 1:], [-1, len(common.CHARS)])
+    digits_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+
+    #
     digits_loss = tf.reshape(digits_loss, [-1, 7])
     digits_loss = tf.reduce_sum(digits_loss, 1)
     digits_loss *= (y_[:, 0] != 0)
@@ -136,7 +143,7 @@ def get_loss(y, y_):
 
     # Calculate the loss from presence indicator being wrong.
     presence_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-        y[:, :1], y_[:, :1])
+        logits=y[:, :1], labels=y_[:, :1])
     presence_loss = 7 * tf.reduce_sum(presence_loss)
 
     return digits_loss, presence_loss, digits_loss + presence_loss
@@ -166,8 +173,13 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
         The learned network weights.
 
     """
+    # 创建前向传播过程model
+    # x: 提供前向传播输入的128x64的图像的placeholder
+    # y: 前向传播最终结果，是长度为(1 + 7 * len(common.CHARS))的向量。
+    # params: 向量，元素为网络中每一层（包括3个卷积层、3个池化层、2个全连接层）的weights和bias。
     x, y, params = model.get_training_model()
 
+    # 标准答案向量，维度与结果向量相同。
     y_ = tf.placeholder(tf.float32, [None, 7 * len(common.CHARS) + 1])
 
     digits_loss, presence_loss, loss = get_loss(y, y_)

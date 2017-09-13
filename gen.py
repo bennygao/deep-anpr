@@ -280,7 +280,9 @@ def generate_ims():
 
 
 if __name__ == "__main__":
-    os.mkdir("test")
+    if not os.path.exists("test"):
+        os.mkdir("test")
+
     im_gen = itertools.islice(generate_ims(), int(sys.argv[1]))
     for img_idx, (im, c, p) in enumerate(im_gen):
         fname = "test/{:08d}_{}_{}.png".format(img_idx, c,
