@@ -125,26 +125,37 @@ def read_batches(batch_size):
 def get_loss(y, y_):
     # Calculate the loss from digits being incorrect.  Don't count loss from
     # digits that are in non-present plates.
-    # y和y_都是长度为(1 + 7 * len(common.CHARS))=(1 + 7 * (10 + 26))=253的向量，
-    # 1表示车牌完整出现在128x64的图像中的概率。
-    # 其中10个数字，26个大写英文字符。
+    # 以下的注释中，大写字母N表示批次中图片数量
+    # y和y_都是shape=(N, 253)的张量，
+    # 其中y_[:, 0]表示车牌是否完整出现在128x64的图像中。
+    # 253 = (1 + 7 * len(common.CHARS))=(1 + 7 * (10 + 26))
+    # 每个车牌上有7个位置，每个位置可能是0~9的数字(10个)或者A~Z的字母(26个)，共计 7 * (10 + 26) = 252。
     # logits和labels都把y和y_向量中第0个元素（表示车牌完整出现在输入图像中概率）去掉，剩下252个元素，
-    # 然后再reshape为7x36的矩阵。每一行表示车牌上的一个位置，每一列的值是该位置是这个字符的概率。
-    # 用reshape过的张量进行softmax和交叉熵计算。
-    logits = tf.reshape(y[:, 1:], [-1, len(common.CHARS)])
-    labels = tf.reshape(y_[:, 1:], [-1, len(common.CHARS)])
-    digits_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
-
-    #
-    digits_loss = tf.reshape(digits_loss, [-1, 7])
-    digits_loss = tf.reduce_sum(digits_loss, 1)
-    digits_loss *= (y_[:, 0] != 0)
-    digits_loss = tf.reduce_sum(digits_loss)
+    # 然后再reshape为shape=(N*7, 36)的矩阵。每一行表示车牌上的一个位置，每一列的值是该位置是这个字符的概率。
+    with tf.name_scope('softmax_cross_entropy'):
+        # logits是把y的维度调整为 (N * 7) x 36 的张量
+        logits = tf.reshape(y[:, 1:], [-1, len(common.CHARS)])
+        # labels是把y_的维度调整为 (N * 7) x 36 的张量
+        labels = tf.reshape(y_[:, 1:], [-1, len(common.CHARS)])
+        # 计算softmax之后的交叉熵，softmax_cross_entropy_with_logits返回与logits行数相等的一个一维张量，
+        # shape=(N * 7,)
+        digits_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+        # 把长度等于 (N * 7) 的一维张量reshape为 (N, 7)
+        digits_loss = tf.reshape(digits_loss, [-1, 7])
+        # 在 shape=(N, 7) 的张量的列维度(axis=1)上做reduce_sum，结果是长度为N的一维张量
+        digits_loss = tf.reduce_sum(digits_loss, axis=1)
+        # 输入向量 y_[:, 0]不等于0 表示车牌完整的出现在图片中，等于0表示车牌没有完成的出现在图片中。
+        # 如果y_[:, 0]不等于0，保留已经计算得到的digits_loss值(*1);
+        # 如果y_[:, 0]等于0，则把digits_loss中的值全设为0
+        digits_loss *= (y_[:, 0] != 0)
+        # 把长度为N的一维张量进行所有维度的reduce，即把所有值加在一起，得到一个值（0维）
+        digits_loss = tf.reduce_sum(digits_loss)
 
     # Calculate the loss from presence indicator being wrong.
-    presence_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-        logits=y[:, :1], labels=y_[:, :1])
-    presence_loss = 7 * tf.reduce_sum(presence_loss)
+    with tf.name_scope('presence_loss'):
+        presence_loss = tf.nn.sigmoid_cross_entropy_with_logits(
+            logits=y[:, :1], labels=y_[:, :1])
+        presence_loss = 7 * tf.reduce_sum(presence_loss)
 
     return digits_loss, presence_loss, digits_loss + presence_loss
 
@@ -177,22 +188,26 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
     # x: 提供前向传播输入的128x64的图像的placeholder
     # y: 前向传播最终结果，是长度为(1 + 7 * len(common.CHARS))的向量。
     # params: 向量，元素为网络中每一层（包括3个卷积层、3个池化层、2个全连接层）的weights和bias。
-    x, y, params = model.get_training_model()
+    with tf.name_scope('input'):
+        x, y, params = model.get_training_model()
+        # 标准答案向量，维度与结果向量相同。
+        y_ = tf.placeholder(tf.float32, [None, 7 * len(common.CHARS) + 1])
 
-    # 标准答案向量，维度与结果向量相同。
-    y_ = tf.placeholder(tf.float32, [None, 7 * len(common.CHARS) + 1])
+    # 创建损失函数
+    with tf.name_scope('loss_function'):
+        digits_loss, presence_loss, loss = get_loss(y, y_)
 
-    digits_loss, presence_loss, loss = get_loss(y, y_)
-    train_step = tf.train.AdamOptimizer(learn_rate).minimize(loss)
-
-    best = tf.argmax(tf.reshape(y[:, 1:], [-1, 7, len(common.CHARS)]), 2)
-    correct = tf.argmax(tf.reshape(y_[:, 1:], [-1, 7, len(common.CHARS)]), 2)
+    # 创建反向传播过程
+    with tf.name_scope('training_step'):
+        train_step = tf.train.AdamOptimizer(learn_rate).minimize(loss)
+        best = tf.argmax(tf.reshape(y[:, 1:], [-1, 7, len(common.CHARS)]), 2)
+        correct = tf.argmax(tf.reshape(y_[:, 1:], [-1, 7, len(common.CHARS)]), 2)
 
     if initial_weights is not None:
         assert len(params) == len(initial_weights)
         assign_ops = [w.assign(v) for w, v in zip(params, initial_weights)]
 
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     def vec_to_plate(v):
         return "".join(common.CHARS[i] for i in v)
@@ -229,12 +244,25 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
                     for b, c, pb, pc in zip(*r_short)))
 
     def do_batch():
-        sess.run(train_step,
-                 feed_dict={x: batch_xs, y_: batch_ys})
         if batch_idx % report_steps == 0:
+            # 配置运行时需要记录的信息。
+            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            # 运行时记录运行信息的proto。
+            run_metadata = tf.RunMetadata()
+            # 训练并获得详细信息
+            sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys},
+                     options=run_options, run_metadata=run_metadata)
+            # 输出日志
+            writer.add_run_metadata(run_metadata=run_metadata, tag=("tag%d" % batch_idx), global_step=batch_idx)
+            # 向屏幕输出
             do_report()
+        else:
+            sess.run(train_step,
+                     feed_dict={x: batch_xs, y_: batch_ys})
 
     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.95)
+    # 定义log
+    writer = tf.summary.FileWriter("log", tf.get_default_graph())
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
         sess.run(init)
         if initial_weights is not None:
@@ -261,6 +289,8 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
             last_weights = [p.eval() for p in params]
             numpy.savez("weights.npz", *last_weights)
             return last_weights
+
+    writer.close()
 
 
 if __name__ == "__main__":
