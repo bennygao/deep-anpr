@@ -137,9 +137,21 @@ def get_loss(y, y_):
         logits = tf.reshape(y[:, 1:], [-1, len(common.CHARS)])
         # labels是把y_的维度调整为 (N * 7) x 36 的张量
         labels = tf.reshape(y_[:, 1:], [-1, len(common.CHARS)])
+
         # 计算softmax之后的交叉熵，softmax_cross_entropy_with_logits返回与logits行数相等的一个一维张量，
         # shape=(N * 7,)
+        # 作用：对于logits和labels之间计算softmax交叉熵。就是在离散分类任务的时候度量概率误差的。
+        # softmax之后的每一个分量就代表一个类，分量（类）上面的值就是该类的概率。
+        # 这个函数并不是计算softmax的函数，只是根据softmax计算分类误差，所以不要吧这个函数当做softmax函数使用。
+        # logits和labels必须有相同的形状[batch_size, num_classes]和相同的类型 (either float16, float32, or float64)。
+        # 参数：
+        # logits: Unscaled log probabilities.
+        # labels: 你的labels矩阵，每一行代表一个样本的概率分布（要是你熟悉softmax和onehot encoding的话）
+        # dim: 作用的维度，默认是-1，表示最后的那个维度
+        # name: 【可选】这个操作的名字
+        # 返回: 一个1维的tensor，长度为batch_size,类型和logits一样。
         digits_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+
         # 把长度等于 (N * 7) 的一维张量reshape为 (N, 7)
         digits_loss = tf.reshape(digits_loss, [-1, 7])
         # 在 shape=(N, 7) 的张量的列维度(axis=1)上做reduce_sum，结果是长度为N的一维张量
@@ -153,6 +165,10 @@ def get_loss(y, y_):
 
     # Calculate the loss from presence indicator being wrong.
     with tf.name_scope('presence_loss'):
+        # sigmoid_cross_entropy_with_logits的作用是计算 logits 经 sigmoid 函数激活之后的交叉熵。
+        # 对于一个不相互独立的离散分类任务，这个函数作用是去度量概率误差。
+        # 比如，在一张图片中，同时包含多个分类目标（大象和狗），那么就可以使用这个函数。
+        # 结果返回与logits维度相同的张量。
         presence_loss = tf.nn.sigmoid_cross_entropy_with_logits(
             logits=y[:, :1], labels=y_[:, :1])
         presence_loss = 7 * tf.reduce_sum(presence_loss)
@@ -197,8 +213,9 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
     with tf.name_scope('loss_function'):
         digits_loss, presence_loss, loss = get_loss(y, y_)
 
-    # 创建反向传播过程
+    # 创建反向传播过程（优化网络各层的权重参数）
     with tf.name_scope('training_step'):
+        # Adam优化，常用的优化方法
         train_step = tf.train.AdamOptimizer(learn_rate).minimize(loss)
         best = tf.argmax(tf.reshape(y[:, 1:], [-1, 7, len(common.CHARS)]), 2)
         correct = tf.argmax(tf.reshape(y_[:, 1:], [-1, 7, len(common.CHARS)]), 2)
@@ -260,11 +277,14 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
             sess.run(train_step,
                      feed_dict={x: batch_xs, y_: batch_ys})
 
+    # 定义GPU参数
     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.95)
     # 定义log
     writer = tf.summary.FileWriter("log", tf.get_default_graph())
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
         sess.run(init)
+
+        # 如果有上次训练的结果（从命令行参数传入），则用上次训练的结果初始化所有参数。
         if initial_weights is not None:
             sess.run(assign_ops)
 
